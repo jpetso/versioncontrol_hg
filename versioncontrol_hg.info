@@ -1,0 +1,5 @@
+; $Id$
+name = "Mercurial backend"
+description = "Provides Mercurial commit information as a pluggable backend for the Version Control API."
+dependencies = versioncontrol
+package = Version Control

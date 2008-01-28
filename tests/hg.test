@@ -1,0 +1,136 @@
+<?php
+
+require_once drupal_get_path('module', 'versioncontrol_hg') . '/hg/hg.inc';
+
+if (!file_exists(dirname(__FILE__) . 'sample')) {
+  hg_clone('http://www.selenic.com/repo/hello', dirname(__FILE__) . '/sample');
+}
+
+/**
+ * Sets up a playground for unit tests, with a repository called
+ * sample/.
+ */
+class HgHarness extends DrupalTestCase
+{
+  var $name = 'harness';
+  var $old;
+  function get_info() {
+    return array(
+      'name'  => t("Mercurial {$this->name}() test"),
+      'desc'  => t("Tests the {$this->name}() function for Mercurial."),
+      'group' => t('Version control API module'),
+    );
+  }
+  function setup() {
+    $this->old = getcwd();
+    chdir(dirname(__FILE__));
+    mkdir('tmp');
+    hg_clone('sample', 'tmp/sample');
+    chdir('tmp');
+  }
+  function teardown() {
+    chdir(dirname(__FILE__));
+    $this->rmdirr('tmp');
+    chdir($this->old);
+  }
+  function rmdirr($dirname) {
+    // Sanity check
+    if (!file_exists($dirname)) {
+      return false;
+    }
+ 
+    // Simple delete for a file
+    if (is_file($dirname) || is_link($dirname)) {
+      return unlink($dirname);
+    }
+ 
+    // Loop through the folder
+    $dir = dir($dirname);
+    while (false !== $entry = $dir->read()) {
+      // Skip pointers
+      if ($entry == '.' || $entry == '..') {
+        continue;
+      }
+      // Recurse
+      $this->rmdirr($dirname . DIRECTORY_SEPARATOR . $entry);
+    }
+ 
+    // Clean up
+    $dir->close();
+    return rmdir($dirname);
+  }
+}
+
+class HgCloneTest extends HgHarness
+{
+  var $name = 'hg_clone';
+  function testBasic() {
+    hg_clone('sample', 'sample2');
+    $this->assertTrue(file_exists('sample2'));
+  }
+}
+
+class HgLogTest extends HgHarness
+{
+  var $name = 'hg_log';
+  function testBasic() {
+    $result = hg_log('sample');
+    $expect = array(
+      array(
+        'author' => 'mpm@selenic.com',
+        'branches' => '',
+        'date' => '1125044488.025200',
+        'desc' => 'Create a makefile',
+        'file_adds' => array('Makefile',),
+        'file_dels' => array(),
+        'files' => array('Makefile'),
+        'file_copies' => array(),
+        'manifest' => '1:0c7c1d435e67',
+        'node' => '82e55d328c8ca4ee16520036c0aaace03a5beb65',
+        'parents' => '',
+        'rev' => '1',
+        'tags' => 'tip',
+      ),
+      array(
+        'author' => 'mpm@selenic.com',
+        'branches' => '',
+        'date' => '1125044450.025200',
+        'desc' => 'Create a standard "hello, world" program',
+        'file_adds' => array('hello.c'),
+        'file_dels' => array(),
+        'files' => array('hello.c'),
+        'file_copies' => array(),
+        'manifest' => '0:ffd341cff206',
+        'node' => '0a04b987be5ae354b710cefeba0e2d9de7ad41a9',
+        'parents' => '',
+        'rev' => '0',
+        'tags' => '',
+      ),
+    );
+    $this->assertIdentical($result, $expect);
+  }
+}
+
+class HgCommitTest extends HgHarness
+{
+  var $name = 'hg_commit';
+  function testBasic() {
+    $log_count = count(hg_log('sample'));
+    file_put_contents('sample/hello.c', "New contents\n");
+    hg_commit('sample', 'Milo', 'Commit message');
+    $this->assertIdentical(count(hg_log('sample')), $log_count + 1);
+  }
+}
+
+class HgPullTest extends HgHarness
+{
+  var $name = 'hg_pull';
+  function testBasic() {
+    $log_count = count(hg_log('sample'));
+    hg_clone('sample', 'sample-branch');
+    file_put_contents('sample/hello.c', "New contents\n");
+    hg_commit('sample', 'Tock', 'Commit message');
+    hg_pull('sample2', 'sample', TRUE);
+    $this->assertIdentical(count(hg_log('sample')), $log_count + 1);
+  }
+}
