@@ -1,0 +1,89 @@
+<?php
+// $Id$
+/**
+ * @file
+ * Mercurial backend for Version Control API - Provides Mercurial commit
+ * information and account management as a pluggable backend.
+ *
+ * Copyright 2008 by Edward Z. Yang (ezyang)
+ */
+
+// Mercurial PHP interface functions
+include_once(drupal_get_path('module', 'versioncontrol_hg') .'/hg/hg.inc');
+
+/**
+ * Implementation of hook_versioncontrol_backends().
+ *
+ * @return
+ *   A structured array containing information about this backend, wrapped
+ *   in a structured array. Array key is the unique string identifier of
+ *   the backend. The corresponding array values are again structured arrays
+ *   and consist of elements with the following keys:
+ *
+ *   - 'name': The user-visible name of the VCS.
+ *   - 'description': A short description of the backend, if possible not
+ *        longer than one or two sentences.
+ *   - 'capabilities': An array listing optional capabilities, in addition to
+ *        the required functionality like retrieval of detailed commit
+ *        information. Array values can be an arbitrary combination
+ *        of VERSIONCONTROL_CAPABILITY_* values. If no additional capabilities
+ *        are supported by the backend, this array will be empty.
+ *   - 'flags': An array listing which tables should be managed by
+ *        Version Control API instead of doing it manually in the backend.
+ *        Array values can be an arbitrary combination of VERSIONCONTROL_FLAG_*
+ *        values. If no array additions should be automatically managed,
+ *        this array will be empty.
+ */
+function versioncontrol_hg_versioncontrol_backends() {
+  return array(
+    // The array key is up to 8 characters long, and used as unique identifier
+    // for this VCS, in functions, URLs and in the database.
+    'hg' => array(
+      // The user-visible name of the VCS.
+      'name' => 'Mercurial',
+
+      // A short description of the VCS, if possible not longer than one or two sentences.
+      'description' => t('Mercurial is a distributed revision control system written in Python.'),
+
+      // A list of optional capabilities, in addition to the required retrieval
+      // of detailed commit information. All allowed values are listed below.
+      'capabilities' => array(
+        // Able to cancel commits if the committer lacks permissions
+        // to commit to specific paths and/or branches.
+        VERSIONCONTROL_CAPABILITY_COMMIT_RESTRICTIONS,
+
+        // Able to cancel branch or tag assignments if the committer lacks
+        // permissions to create/update/delete those.
+        VERSIONCONTROL_CAPABILITY_BRANCH_TAG_RESTRICTIONS,
+
+        // Able to retrieve a file or its revision number based on a global
+        // revision identifier.
+        VERSIONCONTROL_CAPABILITY_ATOMIC_COMMITS,
+      ),
+
+      // An array listing which tables should be managed by Version Control API
+      // instead of doing it manually in the backend.
+      // All allowed values are listed below.
+      'flags' => array(
+        // versioncontrol_insert_repository() will automatically insert
+        // array elements from $repository['[xxx]_specific'] into
+        // {versioncontrol_[xxx]_repositories} and versioncontrol_get_repositories()
+        // will automatically fetch it from there.
+        VERSIONCONTROL_FLAG_AUTOADD_REPOSITORIES,
+
+        // versioncontrol_insert_commit() will automatically insert
+        // array elements from $commit['[xxx]_specific'] into
+        // {versioncontrol_[xxx]_commits} and versioncontrol_get_commits()
+        // will automatically fetch it from there.
+        VERSIONCONTROL_FLAG_AUTOADD_COMMITS,
+      ),
+    ),
+  );
+}
+
+// Awaiting implementation:
+
+// function versioncontrol_hg_menu()
+// function versioncontrol_hg_cron()
+// function versioncontrol_hg_get_commit_actions()
+

@@ -1,0 +1,95 @@
+<?php
+
+// $Id$
+
+/**
+ * @file
+ * Mercurial backend for Version Control API.
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function versioncontrol_hg_install() {
+  switch ($GLOBALS['db_type']) {
+    case 'mysqli':
+    case 'mysql':
+      db_query("CREATE TABLE {versioncontrol_hg_repositories} (
+        repo_id int unsigned NOT NULL default 0,
+        modules varchar(255) NOT NULL default '',
+        update_method tinyint unsigned NOT NULL default 0,
+        updated int unsigned NOT NULL default 0,
+        run_as_user varchar(255) NOT NULL default '',
+        PRIMARY KEY (repo_id)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      // In Mercurial vocab, this should be named "versioncontrol_hg_changesets"
+      // 'node' is the changeset node ID, it is essentially another primary key
+      // 'manifest' is the node ID of the repository state after that commit, also effectively unique
+      // 'rev' is a repository-specific shorthand revision number, tied to manifest
+      db_query("CREATE TABLE {versioncontrol_hg_commits} (
+        vc_op_id int unsigned NOT NULL default 0,
+        branch_id int unsigned NOT NULL default 0,
+        rev int unsigned NOT NULL default 0,
+        node varchar(255) NOT NULL default '',
+        manifest varchar(255) NOT NULL default '',
+        PRIMARY KEY (vc_op_id),
+        UNIQUE KEY (node),
+        UNIQUE KEY (manifest),
+        UNIQUE KEY (rev)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_hg_item_revisions} (
+        item_revision_id int unsigned NOT NULL default 0,
+        vc_op_id int unsigned NOT NULL default 0,
+        action tinyint unsigned NOT NULL default 0,
+        type tinyint NOT NULL default 0,
+        path varchar(255) NOT NULL default '',
+        PRIMARY KEY (item_revision_id),
+        UNIQUE KEY (vc_op_id, path)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      // Mercurial tags apply to changesets, not files
+      db_query("CREATE TABLE {versioncontrol_hg_tags} (
+        vc_op_id int unsigned NOT NULL default 0,
+        name varchar(255) NOT NULL default 'default',
+        PRIMARY KEY (vc_op_id),
+        UNIQUE KEY (name)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+      
+      // Mercurial files can have 1-2 parents, based on merges.
+      db_query("CREATE TABLE {versioncontrol_hg_parents} (
+        vc_op_id int unsigned NOT NULL default 0,
+        parent varchar(255) NOT NULL default '',
+        PRIMARY KEY (vc_op_id, parent)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+      
+      // Missing: versioncontrol_hg_accounts
+      
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function versioncontrol_hg_uninstall() {
+  // Make sure we can access the required functions even from the .install file.
+  include_once(drupal_get_path('module', 'versioncontrol') .'/versioncontrol.module');
+  include_once(drupal_get_path('module', 'versioncontrol_hg') .'/versioncontrol_hg.module');
+
+  if (db_table_exists('versioncontrol_repositories')) {
+    $result = db_query("SELECT repo_id FROM {versioncontrol_repositories}
+                        WHERE vcs = 'hg'");
+    while ($repository = db_fetch_array($result)) {
+      versioncontrol_delete_repository($repository);
+    }
+  }
+
+  db_query('DROP TABLE {versioncontrol_hg_repositories}');
+  db_query('DROP TABLE {versioncontrol_hg_commits}');
+  db_query('DROP TABLE {versioncontrol_hg_item_revisions}');
+  db_query('DROP TABLE {versioncontrol_hg_tags}');
+  db_query('DROP TABLE {versioncontrol_hg_parents}');
+}
+
