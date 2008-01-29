@@ -99,6 +99,10 @@ function _hg_build_base($command, $opts = array(), $gopts = array()) {
  */
 function hg_log($repository, $rev = null, $file = null, $opts = array(), $gopts = array()) {
   $gopts['repository'] = $repository;
+  if (!isset($gopts['debug'])) {
+    // Turn on debug mode to ensure full nodeids.
+    $gopts['debug'] = true;
+  }
   // This template puts the data into a machine readable format:
   $opts['style'] = dirname(__FILE__) . '/templates/lossless.style';
   if ($rev !== null) $opts['rev'] = $rev;
@@ -137,6 +141,8 @@ function hg_log($repository, $rev = null, $file = null, $opts = array(), $gopts 
       case 'file_dels':
       case 'file_copies':
       case 'tags':
+      case 'parents':
+      case 'branches':
         $collect = $key;
         $ret[$i][$key] = array();
         break;
