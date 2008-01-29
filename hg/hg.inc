@@ -110,9 +110,21 @@ function hg_log($repository, $rev = null, $file = null, $opts = array(), $gopts 
   if (empty($out)) return false;
   $ret = array();
   $i = 0;
+  $collect = false;
   foreach ($out as $line) {
-    if (empty($line)) {
+    if ($line === '----') {
       $i++;
+      continue;
+    }
+    if ($collect !== false) {
+      if ($line === '') {
+        $collect = false;
+        continue;
+      }
+      $ret[$i][$collect][] = $line;
+      continue;
+    }
+    if ($line === '') {
       continue;
     }
     list($key, $value) = explode(':', $line, 2);
@@ -124,14 +136,13 @@ function hg_log($repository, $rev = null, $file = null, $opts = array(), $gopts 
       case 'file_adds':
       case 'file_dels':
       case 'file_copies':
-        if ($value !== '') {
-          // This is buggy with filenames with spaces in them; there
-          // is presently no way of fixing this.
-          $value = explode(' ', $value);
-        } else {
-          $value = array();
-        }
+      case 'tags':
+        $collect = $key;
+        $ret[$i][$key] = array();
         break;
+    }
+    if ($collect !== false) {
+      continue;
     }
     $ret[$i][$key] = $value;
   }
