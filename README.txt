@@ -33,7 +33,7 @@ versioncontrol_hg_repositories
 versioncontrol_hg_commits
     Keeps track of Mercurial changesets. While we use versioncontrol's
     `vc_op_id` primary key for internal housekeeping, the true key is
-    `node`, which represents the nodeid for the changeset.
+    `node`, which is stashed away in versioncontrol_commits as `revision`.
 
 versioncontrol_hg_item_revisions
     Keeps track of file-wise changes in Mercurial. This is actually a
@@ -57,10 +57,4 @@ versioncontrol_tag_operations
     It is somewhat difficult to detect when a branch or tag has taken
     place by merely inspecting the logs: additions to .hgtags using
     `hg tag` do not show up in the log at all, and branches are merely
-    indicated by the sudden occurence of a new branch. We are still
-    considering how to manage these, if we will manage them at all.
-
-versioncontrol_commits
-    We are not sure whether or not `revision` should be used, and whether
-    or not the contents of `node` in versioncontrol_hg_commits should be
-    stored here; the field is not indexed.
+    indicated by the sudden occurence of a new branch. 

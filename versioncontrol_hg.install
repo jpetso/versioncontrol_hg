@@ -24,17 +24,14 @@ function versioncontrol_hg_install() {
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       // In Mercurial vocab, this should be named "versioncontrol_hg_changesets"
-      // 'node' is the changeset node ID, it is essentially another primary key
       // 'manifest' is the node ID of the repository state after that commit, also effectively unique
       // 'rev' is a repository-specific shorthand revision number, tied to manifest
       db_query("CREATE TABLE {versioncontrol_hg_commits} (
         vc_op_id int unsigned NOT NULL default 0,
         branch_id int unsigned NOT NULL default 0,
         rev int unsigned NOT NULL default 0,
-        node varchar(255) NOT NULL default '',
         manifest varchar(255) NOT NULL default '',
         PRIMARY KEY (vc_op_id),
-        UNIQUE KEY (node),
         UNIQUE KEY (manifest),
         UNIQUE KEY (rev)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
