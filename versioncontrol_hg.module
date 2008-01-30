@@ -5,7 +5,7 @@
  * Mercurial backend for Version Control API - Provides Mercurial commit
  * information and account management as a pluggable backend.
  *
- * Copyright 2008 by Edward Z. Yang (ezyang)
+ * Copyright 2008 by Edward Z. Yang (ezyang, http://drupal.org/user/211688)
  */
 
 // Mercurial PHP interface functions

@@ -5,6 +5,8 @@
 /**
  * @file
  * Mercurial backend for Version Control API.
+ *
+ * Copyright 2008 by Edward Z. Yang (ezyang, http://drupal.org/user/211688)
  */
 
 /**
@@ -60,8 +62,6 @@ function versioncontrol_hg_install() {
         parent varchar(255) NOT NULL default '',
         PRIMARY KEY (vc_op_id, parent)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-      
-      // Missing: versioncontrol_hg_accounts
       
       break;
   }

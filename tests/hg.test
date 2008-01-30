@@ -1,5 +1,12 @@
 <?php
 
+/**
+ * @file
+ * Test-cases for the PHP-Mercurial backend.
+ *
+ * Copyright 2008 by Edward Z. Yang (ezyang, http://drupal.org/user/211688)
+ */
+
 require_once drupal_get_path('module', 'versioncontrol_hg') . '/hg/hg.inc';
 
 if (!file_exists(dirname(__FILE__) . 'sample')) {

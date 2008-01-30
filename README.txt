@@ -1,6 +1,8 @@
 VERSION CONTROL: MERCURIAL
 --------------------------
 
+Author: Edward Z. Yang (ezyang, http://drupal.org/user/211688)
+
 Mercurial is a distributed revision control system written in Python.
 This module implements Mercurial's API for the Version Control API.
 

@@ -10,8 +10,8 @@
  *    There are some conventions used in this file. They are:
  *      - Global options always come after the local options in the
  *        parameter list.
- *      - Command line strings always have a trailing, so it is safe to
- *        append anything afterwards.
+ *      - Command line strings always have a trailing space, so it is safe 
+ *        to append anything afterwards.
  *
  * @note
  *    These functions can be run *without* Drupal.
@@ -24,6 +24,8 @@
  *    This file does not implement all of Mercurial's functions, just the
  *    ones deemed most useful to version control API. Future versions
  *    should include all functions.
+ *
+ * Copyright 2008 by Edward Z. Yang (ezyang, http://drupal.org/user/211688)
  */
 
 /**
