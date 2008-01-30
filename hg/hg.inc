@@ -143,8 +143,6 @@ function hg_log($repository, $rev = null, $file = null, $opts = array(), $gopts 
       case 'file_dels':
       case 'file_copies':
       case 'tags':
-      case 'parents':
-      case 'branches':
         $collect = $key;
         $ret[$i][$key] = array();
         break;

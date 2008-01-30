@@ -14,25 +14,29 @@
 /**
  * Update repository's database tables by interfacing with Mercurial.
  *
- * @note
- *    This is a generic function for making updates. We may refactor this
- *    into multiple functions dealing with specific pieces of functionality
- *    if it gets too large.
- *
  * @warning
  *    This code should not directly interface with the Mercurial
  *    executable; the hg_* functions defined in hg/hg.inc should be used
  *    instead. If you need functionality not yet defined, submit a patch
  *    for hg/hg.inc implementing it.
  *
+ * @warning
+ *    This function does not account for memory exhaustion.
+ *    An alternative implementation could read each log entry one by
+ *    one from the file (as CVS's implementation does), however, the
+ *    resulting data-structure would still cause large amounts of memory
+ *    usage (this is a primary deficiency of CVS) and would require
+ *    multiple database queries. After determining which heuristics
+ *    need to be able to access previous and later log entries, we will
+ *    refactor accordingly; an alternate implementation would be to
+ *    limit rev_range so that only batches of the logs are parsed at
+ *    a time. Nevertheless, real world usage data is necessary before
+ *    we can make a decision in this respect.
+ *
  * @param $repository
  *    Repository variable as returned by versioncontrol_get_repository()
  */
 function _versioncontrol_hg_log_update_repository(&$repository) {
-  
-  // We're missing functions in the implementation left and right.
-  // Don't run please!
-  return;
   
   // Because we only support local repositories, `hg pull` is NOT called
   // before we perform these changes. It is the responsibility of all
@@ -53,20 +57,22 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
     return;
   }
   
-  // Perform common processing on $raw_logs, such as converting the
-  // date format, figuring out usernames and exploding nodeids with
-  // revisions attached to them.
   _versioncontrol_hg_log_preprocess($raw_logs);
   
   // We could refactor each of these into a "handle" function, e.g.
   // _versioncontrol_hg_log_handle_commits, which performs parsing and
-  // database work:
+  // database work.
   
-  // Update commits
-  $commits    = _versioncontrol_hg_log_parse_commits($raw_logs);
+  // Generate commits:
+  $commits = _versioncontrol_hg_log_parse_commits($raw_logs);
+  return;
+
+  // Update commits in database:
   foreach ($commits as $raw_commit) {
     versioncontrol_insert_commit($raw_commit[0], $raw_commit[1]);
   }
+  
+  // TODO: Branches/Tags generation and updates
   
   // Update latest revision
   $latest_rev = _versioncontrol_hg_log_parse_latest_rev($raw_logs);
@@ -77,7 +83,63 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
   
 }
 
-
+/**
+ * Perform common pre-processing on logs from hg_logs(), although no
+ * major changes to the array's structure.
+ *
+ * @warning
+ *    This function MUST NOT be lossy or fundamentally change the log
+ *    structure; any results of this pre-processing should be stored in
+ *    unique keys prefixed with an underscore, so as to prevent collisions
+ *    with the keys specified in hg/templates/changeset.tmpl.
+ *
+ * @param
+ *    Raw logs variable to pre-process. The following additional indexes
+ *    will be added:
+ *
+ *      '_date' => String UTC Unix timestamp of changeset
+ *      '_offset' => Integer time zone offset of commiter
+ *      '_manifest' => Array parent nodeid
+ *      '_parents' => array(0 => First parent nodeid, 1 => Second parent nodeid)
+ *      '_author' => String author name w/o email
+ *      '_email' => String author's email
+ *
+ *    Nodeids take the form of array(string revision number, string SHA-1 hash)
+ */
+function _versioncontrol_hg_log_preprocess(&$raw_logs) {
+  
+  for ($i = 0, $c = count($raw_logs); $i < $c; $i++) {
+    $log =& $raw_logs[$i];
+    
+    // Parse Mercurial's log format into Unix timestamp and offset.
+    // We do NOT convert the timestamp into an integer to prevent overflow
+    list($log['_date'], $offset) = explode('.', $log['date']);
+    $log['_offset'] = (int) $offset;
+    
+    // Split manifest nodeid (note that we are not converting the revision
+    // number to an integer either.)
+    $log['_manifest'] = explode(':', $log['manifest']);
+    
+    // Split parents, and then split their nodeids
+    $parents = explode(' ', $log['parents']);
+    foreach ($parents as $k => $v) {
+      $log['_parents'][$k] = explode(':', $v);
+    }
+    
+    // Parse author into author name and email
+    // This is somewhat fragile, but should work as long as a user does
+    // not have '>' in their name! :-)
+    $bits = explode('<', $log['author']);
+    $log['_author'] = rtrim($bits[0]);
+    if (!empty($bits[1])) {
+      $log['_email'] = rtrim($bits[1], '>');
+    }
+    else {
+      $log['_email'] = null;
+    }
+  }
+  
+}
 
 /**
  * Parses the array output of hg_log() into form ready for
@@ -91,5 +153,6 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
  */
 function _versioncontrol_hg_log_parse_commits($raw_logs) {
   $ret = array();
-  // unimplemented
+  
+  
 }

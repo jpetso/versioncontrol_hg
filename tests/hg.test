@@ -28,19 +28,39 @@ class HgHarness extends DrupalTestCase
       'group' => t('Version control API module'),
     );
   }
+  
+  /**
+   * @note
+   *    There are some fairly unusual invalid cache conditions that occur
+   *    with the rapid creation and deletion of directories, so we
+   *    call clearstatcache() a lot to make sure PHP doesn't mess things up.
+   */
   function setup() {
     $this->old = getcwd();
     chdir(dirname(__FILE__));
-    mkdir('tmp');
-    hg_clone('sample', 'tmp/sample');
-    chdir('tmp');
+    $i = 0;
+    while(!mkdir('tmp') && $i++ < 6);
+    clearstatcache();
+    if (!file_exists('tmp')) {
+      exit('Failed to create temporary directory');
+    }
+    hg_clone('sample', 'tmp/sample'); // , array('pull' => true)
+    $status = chdir('tmp');
+    if (!$status) {
+      exit('Failed to enter temporary directory');
+    }
+    clearstatcache();
   }
   function teardown() {
+    clearstatcache();
     chdir(dirname(__FILE__));
     $this->rmdirr('tmp');
     chdir($this->old);
+    clearstatcache();
   }
   function rmdirr($dirname) {
+    clearstatcache();
+    
     // Sanity check
     if (!file_exists($dirname)) {
       return false;
@@ -60,6 +80,7 @@ class HgHarness extends DrupalTestCase
       }
       // Recurse
       $this->rmdirr($dirname . DIRECTORY_SEPARATOR . $entry);
+      clearstatcache();
     }
  
     // Clean up
@@ -90,8 +111,8 @@ class HgLogTest extends HgHarness
         'manifest' => '1:0c7c1d435e6703e03ac6634a7c32da3a082d1600',
         'node' => '82e55d328c8ca4ee16520036c0aaace03a5beb65',
         'rev' => '1',
-        'branches' => array(),
-        'parents' => array(),
+        'parents' => '0:0a04b987be5ae354b710cefeba0e2d9de7ad41a9 -1:0000000000000000000000000000000000000000',
+        'branches' => '',
         'tags' => array('tip'),
         'files' => array('Makefile'),
         'file_adds' => array('Makefile',),
@@ -105,8 +126,8 @@ class HgLogTest extends HgHarness
         'manifest' => '0:ffd341cff20645e886bdeb47d58713cd15ec241b',
         'node' => '0a04b987be5ae354b710cefeba0e2d9de7ad41a9',
         'rev' => '0',
-        'branches' => array(),
-        'parents' => array(),
+        'parents' => '-1:0000000000000000000000000000000000000000 -1:0000000000000000000000000000000000000000',
+        'branches' => '',
         'tags' => array(),
         'files' => array('hello.c'),
         'file_adds' => array('hello.c'),
