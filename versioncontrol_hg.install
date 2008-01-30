@@ -16,11 +16,12 @@ function versioncontrol_hg_install() {
   switch ($GLOBALS['db_type']) {
     case 'mysqli':
     case 'mysql':
+      // 'latest_rev' is the most recent repository-specific revision number
+      // that has been processed and added to the database.
       db_query("CREATE TABLE {versioncontrol_hg_repositories} (
         repo_id int unsigned NOT NULL default 0,
-        modules varchar(255) NOT NULL default '',
         update_method tinyint unsigned NOT NULL default 0,
-        updated int unsigned NOT NULL default 0,
+        latest_rev int unsigned NOT NULL default 0,
         run_as_user varchar(255) NOT NULL default '',
         PRIMARY KEY (repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
