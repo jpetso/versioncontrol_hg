@@ -61,7 +61,8 @@ function versioncontrol_hg_install() {
       db_query("CREATE TABLE {versioncontrol_hg_parents} (
         vc_op_id int unsigned NOT NULL default 0,
         parent varchar(255) NOT NULL default '',
-        PRIMARY KEY (vc_op_id, parent)
+        PRIMARY KEY (vc_op_id, parent),
+        KEY (vc_op_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
       
       break;

@@ -106,8 +106,259 @@ function _versioncontrol_hg_update_repository(&$repository) {
   _versioncontrol_hg_log_update_repository($repository);
 }
 
+/**
+ * Implementation of [versioncontrol_backend]_get_directory_item():
+ * Retrieve the item of the deepest-level directory in the repository that is
+ * common to all the changed/branched/tagged items in a commit, branch or
+ * tag operation. In other words, this function gets you the item
+ * for $operation['directory'].
+ *
+ * @warning
+ *   I don't understand why this can't have a generic implementation.
+ *
+ * @param $operation
+ *   The commit, branch or tag operation whose deepest-level
+ *   changed/branched/tagged directory should be retrieved.
+ *
+ * @return
+ *   The requested directory item. Item values are structured arrays and
+ *   consist of elements with the following keys:
+ *
+ *   - 'type': Specifies the item type, which in this case can only be
+ *        VERSIONCONTROL_ITEM_DIRECTORY.
+ *   - 'path': The path of the directory, which will be the same
+ *        as $operation['directory'].
+ *   - 'revision': The (file-level) revision when the item was last changed.
+ *        If there is no such revision (which may be the case for
+ *        directory items) then the 'revision' element is an empty string.
+ *   - '[xxx]_specific': May be set by the backend to remember additional
+ *        item info. ("[xxx]" is the unique string identifier
+ *        of the respective version control system.)
+ */
+function versioncontrol_hg_get_directory_item($operation) {
+  $item = array(
+    'type' => VERSIONCONTROL_ITEM_DIRECTORY,
+    'path' => $operation['directory'],
+    'revision' => '',
+    // We removed selected_op; might need to readd it later
+  );
+  if (isset($operation['hg_specific']['branch_id'])) {
+    $item['hg_specific']['selected_branch_id'] = $operation['hg_specific']['branch_id'];
+  }
+  return $item;
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_commit_branches():
+ * Retrieve the branches that have been affected by the given commit.
+ *
+ * @warning
+ *   This one could have a generic implementation too! The biggest problem
+ *   is that versioncontrol doesn't directly handle branches, but if
+ *   the module is going to call this function, it really ought to.
+ *
+ * @return
+ *   An array of strings that identify a branch in the respective repository,
+ *   or an empty array if no branches were affected at all. (For CVS, there
+ *   should always be a exactly one branch in the resulting array.)
+ */
+function versioncontrol_hg_get_commit_branches($commit) {
+  if (!isset($commit['hg_specific']['branch_id'])) {
+    return array();
+  }
+  $branch = versioncontrol_get_branch($commit['hg_specific']['branch_id']);
+  if (!isset($branch)) {
+    // Only for database inconsistencies:
+    return array();
+  }
+  return array($branch['branch_name']);
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_commit():
+ * Manage (insert or delete) additional commit data in the database.
+ *
+ * @param $op
+ *   Either 'insert' when the commit is in the process of being created,
+ *   or 'delete' if it will be deleted after this function has been called.
+ * @param $commit
+ *   A single commit array, like the ones returned
+ *   by versioncontrol_get_commits().
+ * @param $commit_actions
+ *   A structured array containing the exact details of what happened to
+ *   each item in this commit. The structure of this array is the same as
+ *   the return value of versioncontrol_get_commit_actions().
+ */
+function versioncontrol_hg_commit($op, $commit, $commit_actions) {
+  // TODO: There is quite a bit of duplicated code here between hg,
+  // git and hg; maybe item_revisions should be put in core?
+  
+  switch ($op) {
+    case 'insert':
+      foreach ($commit_actions as $path => $action) {
+        $revision = '';
+
+        // If available, get item type and revision from the contained items.
+        // TODO: The $revision variable is never saved, but once the
+        // parents table is used, it should be redundant.
+        if (isset($action['current item'])) {
+          $type = $action['current item']['type'];
+          $revision = $action['current item']['revision'];
+        }
+        else {
+          // No current item, therefore file was deleted.
+          $type = VERSIONCONTROL_ITEM_FILE_DELETED;
+          $revision = $action['hg_specific']['revision'];
+        }
+
+        $item_revision_id = db_next_id('{versioncontrol_hg_item_revisions}_item_revision_id');
+        db_query(
+          "INSERT INTO {versioncontrol_hg_item_revisions}
+           (item_revision_id, vc_op_id, type, path, action)
+           VALUES (%d, %d, %d, '%s', %d)",
+          $item_revision_id, $commit['vc_op_id'], $type, $path, $action['action']
+        );
+      }
+      break;
+
+    case 'delete':
+      $result = db_query('SELECT item_revision_id
+                          FROM {versioncontrol_hg_item_revisions}
+                          WHERE vc_op_id = %d', $commit['vc_op_id']);
+
+      // We have not implemented tags yet, but this is fairly sensible
+      // "unhooking" of tags from the deleted revisions.
+      
+      //while ($revision = db_fetch_object($result)) {
+      //  db_query('DELETE FROM {versioncontrol_hg_item_tags}
+      //            WHERE item_revision_id = %d',
+      //            $revision->item_revision_id);
+      //}
+      db_query('DELETE FROM {versioncontrol_hg_item_revisions}
+                WHERE vc_op_id = %d', $commit['vc_op_id']);
+      break;
+  }
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_commit_actions():
+ * Retrieve detailed information about what happened in a single commit.
+ *
+ * @param $commit
+ *   The commit whose actions should be retrieved.
+ *
+ * @return
+ *   A structured array containing the exact details of what happened to
+ *   each item in this commit. Array keys are the current/new paths, also for
+ *   VERSIONCONTROL_ACTION_DELETED actions even if the file actually doesn't
+ *   exist anymore. The corresponding array values are again structured arrays
+ *   and consist of elements with the following keys:
+ *
+ *   'action': Specifies how the item was modified.
+ *             One of the predefined VERSIONCONTROL_ACTION_* values.
+ *   'modified': Boolean value, specifies if a file was modified in addition
+ *               to the other action in the 'action' element of the array.
+ *               Only exists for the VERSIONCONTROL_ACTION_MOVED
+ *               and VERSIONCONTROL_ACTION_COPIED actions.
+ *   'current item': The updated state of the modified item. Exists for all
+ *                   actions except VERSIONCONTROL_ACTION_DELETED.
+ *   'source items': An array with the previous state(s) of the modified item.
+ *                   Path and branch will always be the same as in the current
+ *                   item except for the VERSIONCONTROL_ACTION_MOVED,
+ *                   VERSIONCONTROL_ACTION_COPIED and
+ *                   VERSIONCONTROL_ACTION_MERGED actions.
+ *                   Exists for all actions except VERSIONCONTROL_ACTION_ADDED.
+ *
+ *   Item values are structured arrays and consist of elements
+ *   with the following keys:
+ *
+ *   'type': Specifies the item type, which is either
+ *           VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
+ *   'path': The path of the item at the specific revision.
+ *   'revision': The (file-level) revision when the item was changed.
+ *               If there is no such revision (which may be the case for
+ *               directory items) then the 'revision' element is
+ *               an empty string.
+ *   '[xxx]_specific': May be set by the backend to remember additional
+ *                     item info. ("[xxx]" is the unique string identifier
+ *                     of the respective version control system.)
+ */
+function versioncontrol_hg_get_commit_actions($commit) {
+  $actions = array();
+  $result = db_query('SELECT item_revision_id, action, type, path
+                      FROM {versioncontrol_hg_item_revisions}
+                      WHERE vc_op_id = %d', $commit['vc_op_id']);
+
+  while ($item_revision = db_fetch_object($result)) {
+    $action = array(
+      'action' => $item_revision->action,
+    );
+    
+    // Commented entries are ones we might add later, but as of right
+    // now don't seem necessary
+
+    if ($item_revision->action != VERSIONCONTROL_ACTION_DELETED) {
+      $action['current item'] = array(
+        'type' => $item_revision->type,
+        'path' => $item_revision->path,
+        'hg_specific' => array(
+          'item_revision_id' => $item_revision->item_revision_id,
+          // This is for versioncontrol_hg_get_current_item_branch()
+          'selected_branch_id' => $commit['hg_specific']['branch_id'],
+          // 'selected_op' => $commit,
+        ),
+      );
+    } else {
+      // We need the previous item revision ID... currently not accessible
+      // via the current database schema.
+    }
+    if ($item_revision->action != VERSIONCONTROL_ACTION_ADDED) {
+      $action['source items'] = array(array(
+        'type' => $item_revision->type,
+        'path' => $item_revision->path,
+        'hg_specific' => array(
+          'item_revision_id' => $item_revision->item_revision_id,
+          'selected_branch_id' => $commit['hg_specific']['branch_id'],
+          // 'selected_op' => $commit,
+        ),
+      ));
+    }
+
+    $actions[$item_revision->path] = $action;
+  }
+
+  return $actions;
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_current_item_branch():
+ * Retrieve the current branch that this item is in. If this item was part of
+ * the result of versioncontrol_get_commit_actions(), this will probably be
+ * the branch that this item was committed to. The main branch ('HEAD' for CVS)
+ * is also a valid branch and should be expected as return value.
+ *
+ * @param $repository
+ *   The repository that the item is located in.
+ * @param $item
+ *   The item whose current branch should be retrieved.
+ *
+ * @return
+ *   A string containing the current item branch, or NULL if no branch
+ *   is known or applicable.
+ */
+function versioncontrol_hg_get_current_item_branch($repository, $item) {
+  if (!isset($item['hg_specific']['selected_branch_id'])) {
+    return NULL;
+  }
+
+  $branch = versioncontrol_get_branch($item['hg_specific']['selected_branch_id']);
+  if (!isset($branch)) {
+    return NULL;
+  }
+  return $branch['branch_name'];
+}
+
 // Awaiting implementation:
 
 // function versioncontrol_hg_menu()
-// function versioncontrol_hg_get_commit_actions()
 
