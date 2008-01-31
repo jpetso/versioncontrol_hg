@@ -25,6 +25,8 @@ TODO
 - The rest of the required functions
 - Documentation on which order one should implement things for a
   versioncontrol backend (based on this experience)
+- Formalize any redundancies, determine which ones should be kept for
+  performance and which ones should be scrapped in favor of JOINS.
 - ???
 
 KNOWN ISSUES
