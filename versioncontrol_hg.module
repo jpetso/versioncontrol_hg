@@ -48,14 +48,6 @@ function versioncontrol_hg_versioncontrol_backends() {
       // A list of optional capabilities, in addition to the required retrieval
       // of detailed commit information. All allowed values are listed below.
       'capabilities' => array(
-        // Able to cancel commits if the committer lacks permissions
-        // to commit to specific paths and/or branches.
-        VERSIONCONTROL_CAPABILITY_COMMIT_RESTRICTIONS,
-
-        // Able to cancel branch or tag assignments if the committer lacks
-        // permissions to create/update/delete those.
-        VERSIONCONTROL_CAPABILITY_BRANCH_TAG_RESTRICTIONS,
-
         // Able to retrieve a file or its revision number based on a global
         // revision identifier.
         VERSIONCONTROL_CAPABILITY_ATOMIC_COMMITS,
@@ -178,6 +170,10 @@ function versioncontrol_hg_get_commit_branches($commit) {
  * Implementation of [versioncontrol_backend]_commit():
  * Manage (insert or delete) additional commit data in the database.
  *
+ * @warning
+ *   An important precondition for our particular implementation is that
+ *   all earlier revisions must be in the database.
+ *
  * @param $op
  *   Either 'insert' when the commit is in the process of being created,
  *   or 'delete' if it will be deleted after this function has been called.
@@ -196,34 +192,95 @@ function versioncontrol_hg_commit($op, $commit, $commit_actions) {
   switch ($op) {
     case 'insert':
       foreach ($commit_actions as $path => $action) {
-        $revision = '';
-
-        // If available, get item type and revision from the contained items.
-        // TODO: The $revision variable is never saved, but once the
-        // parents table is used, it should be redundant.
-        if (isset($action['current item'])) {
-          $type = $action['current item']['type'];
-          $revision = $action['current item']['revision'];
+        
+        // Determine source information for this particular path
+        // based on both the commit's parent information and this
+        // filename. This is *very* Mercurial-specific.
+        
+        $source = array();
+        foreach (array(1, 2) as $k) {
+          $rev = $commit['hg_specific']["parent$k"];
+          $source[$k] = array();
+          if ($rev == '-1' || $rev == null) {
+            // No parent, so our job is really easy.
+            $source[$k]['path']     = null;
+            $source[$k]['vc_op_id'] = null;
+            continue;
+          }
+          // Determine the branch of the parent
+          $parent_commit = db_result(db_query(
+            "SELECT branch_id FROM {versioncontrol_hg_commits}
+             WHERE rev = %d",
+             $rev)
+          );
+          if (!$parent_commit) {
+            // Database inconsistency!
+            $source[$k]['path']     = null;
+            $source[$k]['vc_op_id'] = null;
+            continue;
+          }
+          
+          $branch_id = $parent_commit['branch_id'];
+          
+          // Now, let's determine the latest commit_action for this
+          // path on this branch: this will be the parent revision.
+          $last_vc_op_id = db_result(db_query(
+            "SELECT actions.vc_op_id FROM {versioncontrol_hg_commit_actions} AS actions
+            JOIN {versioncontrol_hg_commits} AS commits
+            ON actions.vc_op_id = commits.vc_op_id
+            WHERE actions.path = '%s' AND commits.branch_id = %d
+            ORDER BY commits.rev DESC
+            LIMIT 1
+            ",
+            $path, $branch_id));
+          
+          if (!$last_vc_op_id) {
+            // Database inconsistency! (and code duplication!)
+            $source[$k]['path']     = null;
+            $source[$k]['vc_op_id'] = null;
+            continue;
+          }
+          
+          // We currently have no way of telling if a file was copied.
+          $source[$k]['path'] = $path;
+          $source[$k]['vc_op_id'] = $last_vc_op_id;
+          
         }
-        else {
-          // No current item, therefore file was deleted.
-          $type = VERSIONCONTROL_ITEM_FILE_DELETED;
-          $revision = $action['hg_specific']['revision'];
-        }
-
-        $item_revision_id = db_next_id('{versioncontrol_hg_item_revisions}_item_revision_id');
+        
+        $commit_action_id = db_next_id('{versioncontrol_hg_commit_actions}_commit_action_id');
+        
+        // Use this to support nulls. Call it a nasty cludge... I think it's art. :-)
+        // Commented placeholders are used to maintain parameter order.
+        $s1p = ($source[1]['path'] === null) ? 'NULL /*%s*/' : "'%s'";
+        $s2p = ($source[2]['path'] === null) ? 'NULL /*%s*/' : "'%s'";
+        $s1v = ($source[1]['vc_op_id'] === null) ? 'NULL /*%d*/' : '%d';
+        $s2v = ($source[2]['vc_op_id'] === null) ? 'NULL /*%d*/' : '%d';
+        
         db_query(
-          "INSERT INTO {versioncontrol_hg_item_revisions}
-           (item_revision_id, vc_op_id, type, path, action)
-           VALUES (%d, %d, %d, '%s', %d)",
-          $item_revision_id, $commit['vc_op_id'], $type, $path, $action['action']
+          "INSERT INTO {versioncontrol_hg_commit_actions}
+           (commit_action_id, vc_op_id, type, path, action,
+           source1_path, source2_path, source1_vc_op_id, source2_vc_op_id)
+           VALUES (%d, %d, %d, '%s', %d,
+                   $s1p, $s2p, $s1v, $s2v)",
+          // Primary key:
+          $commit_action_id,
+          // Foreign key:
+          $commit['vc_op_id'],
+          $action['current item']['type'],
+          $path,
+          $action['action'],
+          // [Newline]
+          $source[1]['path'],
+          $source[2]['path'],
+          $source[1]['vc_op_id'],
+          $source[2]['vc_op_id']
         );
       }
       break;
 
     case 'delete':
-      $result = db_query('SELECT item_revision_id
-                          FROM {versioncontrol_hg_item_revisions}
+      $result = db_query('SELECT commit_action_id
+                          FROM {versioncontrol_hg_commit_actions}
                           WHERE vc_op_id = %d', $commit['vc_op_id']);
 
       // We have not implemented tags yet, but this is fairly sensible
@@ -234,7 +291,7 @@ function versioncontrol_hg_commit($op, $commit, $commit_actions) {
       //            WHERE item_revision_id = %d',
       //            $revision->item_revision_id);
       //}
-      db_query('DELETE FROM {versioncontrol_hg_item_revisions}
+      db_query('DELETE FROM {versioncontrol_hg_commit_actions}
                 WHERE vc_op_id = %d', $commit['vc_op_id']);
       break;
   }
@@ -284,50 +341,66 @@ function versioncontrol_hg_commit($op, $commit, $commit_actions) {
  *                     of the respective version control system.)
  */
 function versioncontrol_hg_get_commit_actions($commit) {
-  $actions = array();
-  $result = db_query('SELECT item_revision_id, action, type, path
-                      FROM {versioncontrol_hg_item_revisions}
+  $commit_actions = array();
+  
+  $result = db_query('SELECT commit_action_id, action, type, path,
+                      source1_path, source2_path, source1_vc_op_id, source2_vc_op_id
+                      FROM {versioncontrol_hg_commit_actions}
                       WHERE vc_op_id = %d', $commit['vc_op_id']);
 
-  while ($item_revision = db_fetch_object($result)) {
-    $action = array(
-      'action' => $item_revision->action,
+  while ($raw_commit_action = db_fetch_array($result)) {
+    $commit_action = array(
+      'action' => $raw_commit_action['action'],
+      'modified' => FALSE,
+      'hg_specific' => array(
+        // Some housekeeping values:
+        // Not sure who would need this, but we'll keep it anyway:
+        'commit_action_id' => $raw_commit_action['commit_action_id'],
+        // This is for versioncontrol_hg_get_current_item_branch():
+        'selected_branch_id' => $commit['hg_specific']['branch_id'],
+        // Don't know who will need this yet:
+        // 'selected_op' => $commit,
+      ),
     );
     
-    // Commented entries are ones we might add later, but as of right
-    // now don't seem necessary
-
-    if ($item_revision->action != VERSIONCONTROL_ACTION_DELETED) {
-      $action['current item'] = array(
-        'type' => $item_revision->type,
-        'path' => $item_revision->path,
-        'hg_specific' => array(
-          'item_revision_id' => $item_revision->item_revision_id,
-          // This is for versioncontrol_hg_get_current_item_branch()
-          'selected_branch_id' => $commit['hg_specific']['branch_id'],
-          // 'selected_op' => $commit,
-        ),
+    if ($raw_commit_action['action'] !== VERSIONCONTROL_ACTION_DELETED) {
+      $commit_action['current item'] = array(
+        'type' => $raw_commit_action['type'],
+        'path' => $raw_commit_action['path'],
+        'revision' => $commit['revision'],
       );
-    } else {
-      // We need the previous item revision ID... currently not accessible
-      // via the current database schema.
     }
-    if ($item_revision->action != VERSIONCONTROL_ACTION_ADDED) {
-      $action['source items'] = array(array(
-        'type' => $item_revision->type,
-        'path' => $item_revision->path,
-        'hg_specific' => array(
-          'item_revision_id' => $item_revision->item_revision_id,
-          'selected_branch_id' => $commit['hg_specific']['branch_id'],
-          // 'selected_op' => $commit,
-        ),
-      ));
+    
+    // Most implementations check action, but since there are only
+    // two to check, we won't bother:
+    $commit_action['source items'] = array();
+    foreach (array(1, 2) as $k) {
+      if ($raw_commit_action["source{$k}_vc_op_id"] === null) {
+        continue;
+      }
+      // Pull the changeset node for the operation
+      // We could use versioncontrol_get_commits(), but that's total
+      // overkill for our needs. We could also have done a JOIN.
+      $revision = db_result(db_query(
+        "SELECT revision FROM {versioncontrol_commits}
+        WHERE vc_op_id = %d",
+        $raw_commit_action["source{$k}_vc_op_id"])
+      );
+      if (!$revision) {
+        // Database error, abort!
+        continue;
+      }
+      $commit_action['source items'][] = array(
+        'type' => $raw_commit_action['type'],
+        'path' => $raw_commit_action["source{$k}_path"],
+        'revision' => $revision,
+      );
     }
 
-    $actions[$item_revision->path] = $action;
+    $commit_actions[$raw_commit_action['path']] = $commit_action;
   }
 
-  return $actions;
+  return $commit_actions;
 }
 
 /**

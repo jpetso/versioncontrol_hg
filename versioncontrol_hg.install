@@ -17,35 +17,55 @@ function versioncontrol_hg_install() {
     case 'mysqli':
     case 'mysql':
       // 'latest_rev' is the most recent repository-specific revision number
-      // that has been processed and added to the database.
+      // that has been processed and added to the database, or NULL if
+      // no revisions have been inserted (the equivalent of -1)
       db_query("CREATE TABLE {versioncontrol_hg_repositories} (
         repo_id int unsigned NOT NULL default 0,
         update_method tinyint unsigned NOT NULL default 0,
-        latest_rev int unsigned NOT NULL default 0,
+        latest_rev int unsigned NULL,
         run_as_user varchar(255) NOT NULL default '',
         PRIMARY KEY (repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
-      // In Mercurial vocab, this should be named "versioncontrol_hg_changesets"
-      // 'manifest' is the node ID of the repository state after that commit, also effectively unique
-      // 'rev' is a repository-specific shorthand revision number, tied to manifest
+      // In Mercurial vocab, this should be named "versioncontrol_hg_changesets",
+      // however we call it commits to piggy back off of AUTOCOMMIT
+      //
+      // 'manifest' is the node ID of the repository state after that commit,
+      //    also effectively unique. NULL = '0000000000000000000000000000000000000000'.
+      // 'rev' is a repository-specific shorthand revision number, tied 
+      //    to manifest. NULL = -1
+      // 'parent1' and 'parent2' are the vc_op_id of the parent changesets
+      //    of the commit. If there is no parent, NULL is set.
+      
       db_query("CREATE TABLE {versioncontrol_hg_commits} (
         vc_op_id int unsigned NOT NULL default 0,
         branch_id int unsigned NOT NULL default 0,
-        rev int unsigned NOT NULL default 0,
-        manifest varchar(255) NOT NULL default '',
+        rev int unsigned NULL,
+        manifest varchar(255) NULL,
+        parent1 int signed NULL,
+        parent2 int signed NULL,
         PRIMARY KEY (vc_op_id),
         UNIQUE KEY (manifest),
         UNIQUE KEY (rev)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-
-      db_query("CREATE TABLE {versioncontrol_hg_item_revisions} (
-        item_revision_id int unsigned NOT NULL default 0,
+      
+      // sourceX_path corresponds to parentX in the commit log.
+      // sourceX_Y values can be NULL depending on merge status.
+      // There are no file-specific revisions that we track (Mercurial
+      // does have internal ones, but they are not easily accessible),
+      // so we defer this contains the last operation in which the item
+      // was changed.
+      db_query("CREATE TABLE {versioncontrol_hg_commit_actions} (
+        commit_action_id int unsigned NOT NULL default 0,
         vc_op_id int unsigned NOT NULL default 0,
         action tinyint unsigned NOT NULL default 0,
         type tinyint NOT NULL default 0,
         path varchar(255) NOT NULL default '',
-        PRIMARY KEY (item_revision_id),
+        source1_path varchar(255) NULL,
+        source2_path varchar(255) NULL,
+        source1_vc_op_id int unsigned NULL,
+        source2_vc_op_id int unsigned NULL,
+        PRIMARY KEY (commit_action_id),
         UNIQUE KEY (vc_op_id, path)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
@@ -55,14 +75,6 @@ function versioncontrol_hg_install() {
         name varchar(255) NOT NULL default 'default',
         PRIMARY KEY (vc_op_id),
         UNIQUE KEY (name)
-      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-      
-      // Mercurial files can have 1-2 parents, based on merges.
-      db_query("CREATE TABLE {versioncontrol_hg_parents} (
-        vc_op_id int unsigned NOT NULL default 0,
-        parent varchar(255) NOT NULL default '',
-        PRIMARY KEY (vc_op_id, parent),
-        KEY (vc_op_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
       
       break;
@@ -87,8 +99,7 @@ function versioncontrol_hg_uninstall() {
 
   db_query('DROP TABLE {versioncontrol_hg_repositories}');
   db_query('DROP TABLE {versioncontrol_hg_commits}');
-  db_query('DROP TABLE {versioncontrol_hg_item_revisions}');
+  db_query('DROP TABLE {versioncontrol_hg_commit_actions}');
   db_query('DROP TABLE {versioncontrol_hg_tags}');
-  db_query('DROP TABLE {versioncontrol_hg_parents}');
 }
 

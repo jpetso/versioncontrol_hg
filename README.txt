@@ -16,59 +16,107 @@ The following items have been completed:
 - Database schema
 - Module information hook
 - Log to database adapter
-- Basic integration with commit log
+- Works with commit log
+- Parents are now done recorded and reconstituted properly
 
 TODO
 ----
 
+These are required items that have not been implemented yet.
+
 - Tags/Branches logging
+- Tag tracking
 - The rest of the required functions
+    - versioncontrol_hg_get_branched_items()
+    - versioncontrol_hg_get_tagged_items()
+        NOTE: These are not exactly relevant to Mercurial, as branches
+        and tags are repository-wide.
+    - versioncontrol_hg_get_current_item_tag(), tied to tag tracking
+    - versioncontrol_hg_get_parent_item()
+        NOTE: This is somewhat icky, since Mercurial doesn't version
+        directories.
+- Account tracking (currently everything is anonymous w/ emails)
+
+TODO EXTRA!
+-----------
+
+These todo items aren't strictly necessary to complete the GHOP task
+but are things I'd like to do some time.
+
 - Documentation on which order one should implement things for a
   versioncontrol backend (based on this experience)
 - Formalize any redundancies, determine which ones should be kept for
   performance and which ones should be scrapped in favor of JOINS.
-- ???
+- Reorganize log processing to be one commit at a time
+- Make log parsing use low memory
+- Figure out how to import a richer hg repository for testing
+
+TODO FOR CRAZY PEOPLE
+---------------------
+
+Enough said.
+
+- Implement xhg hook scripts
+- Develop a repository administration interface for creating new
+  repositories for new projects, etc.
+
+DESIGN DECISIONS
+----------------
+
+The versioncontrol module is reasonably RCS agnostic, but its documentation
+is greatly lacking in terms of some of the most important implementation
+details and idioms; the fact that CVS is the only reference implementation
+available complicates things greatly.
+
+We chose to retain the basic setup of CVS with regards to inserting log
+data in the database, and then spitting it out for further processing
+(facilities for this are explicitly provided using auto-commit). However,
+we redesigned many of the tables (and dropped several) to ensure a cleaner
+map to Mercurial's features. The most important thing to remember is that
+INSTANTIATING THE IN-MEMORY STRUCTURE FROM THE DATABASE SHOULD TAKE AS
+LITTLE CODE AS POSSIBLE. Thus, all data is saved in the form that
+versioncontrol demands, and then allowances are made for Mercurial, and
+extra fields added for full retention. The parallel, at times competing,
+goal is: DUPLICATE INFORMATION AS LITTLE AS POSSIBLE (except when
+necessary for performance). Thus, we omitted many fields when they
+could be appropriately determined from a foreign key association.
+
+I have carefully reviewed every bit of code from CVS that influenced
+design decisions here, and diverged whenever differences between the
+two RCS's were great enough that it was merited. One major change that
+I'd like to see merged back to CVS is the use of a PHP function wrapper
+backend to hide the tangly mess of command line calls, and perhaps
+allow PHP to use the native function library.
 
 KNOWN ISSUES
 ------------
+
+Major issues:
+
+NONE
+
+Minor aesthetic issues and enhancements:
+
+- Using SHA-1 hashes for revision is really ugly; maybe we should use the
+  non-portable revision numbers? (Ideally, compact nodeids would be
+  used, but we need a way to calculate them on the fly due to the
+  risk of collisions.)
 
 - Using email as account name results in commit log displaying the
   email to the world. It is unknown if, when we give versioncontrol
   the ability to lookup uids based on emails, these emails will be
   suppressed from public view.
 
-- Parent information has not been recorded yet in the
-  versioncontrol_hg_parents table. This shows up when we're retrieving
-  commit actions and we don't know what the previous revision was.
-  
-  RELATED: Commit log probably does not have the capacity
-  to display two previous versions; versioncontrol_hg_commit() and
-  _versioncontrol_hg_log_parse_commits() are using hg_specific for
-  some out of band communication of the parent revision--this should not
-  be necessary?
-
-- Commit log seems to barf over our path names because they don't have
-  leading slashes. Should we bend to its will, or patch it so that its
-  directory munging algorithm is better.
-
 - 'file_copies' as per the Mercurial output doesn't ever seem to be
   triggered; the implementation for this case is accordingly patchy,
-  especially use of the 'modified' flag.
+  especially use of the 'modified' flag. More research is necessary in
+  this respect. For now, this should be harmless enough.
 
-- $commit_action['source items'] doesn't seem to be saved--which function is
-  responsible for it?
-  
-- There are number of 'vcs_specific' items that are relied on by
-  commitlog; I, on the other hand, have been methodically removing extra
-  pieces that it seemed like I didn't need. Commitlog should not be
-  relying on this data, one would think--otherwise, it needs to be better
-  documented.
-  
-  RELATED: What bits of data are being set but never being used?
+Possible upstream issues:
 
-- On the topic of source items, the parent nodeids we receive are for
-  the merged changesets, so there's no way to reliably reverse engineer
-  the source files?
+- Commit log seems to barf over our path names because they don't have
+  leading slashes. We currently have taken measures to fix this, but
+  that should not be necessary!
 
 - There is a lot of functionality that feels like it would be better
   placed in versioncontrol itself; namely [versioncontrol_vcs]_get_directory_item(),
@@ -80,54 +128,11 @@ KNOWN ISSUES
   able to say hook_[hookname] and defer the documenting to versioncontrol
   itself.
 
-- Using SHA-1 hashes for revision is really ugly; maybe we should use the
-  non-portable revision numbers? (Ideally, compact nodeids would be
-  used, but we need a way to calculate them on the fly due to the
-  risk of collisions.)
+- Commit log should link to our previous revisions, i.e. (modified: 234dab3...)
 
 STRUCTURE
 ---------
 
-hg/            Contains code for interfacing with Mercurial via command line
+hg/            Generic code for interfacing with Mercurial via command line
   templates/   These are our custom templates to minimize necessary log parsing
 tests/         SimpleTest unit tests for hg/
-
-DATABASE
---------
-
-This module uses extra tables to cache data from Mercurial. They are:
-
-versioncontrol_hg_repositories
-    Standard issue, see versioncontrol_repositories and
-    versioncontrol_cvs_repositories for more information.
-
-versioncontrol_hg_commits
-    Keeps track of Mercurial changesets. While we use versioncontrol's
-    `vc_op_id` primary key for internal housekeeping, the true key is
-    `node`, which is stashed away in versioncontrol_commits as `revision`.
-
-versioncontrol_hg_item_revisions
-    Keeps track of file-wise changes in Mercurial. This is actually a
-    foreign key mapping to versioncontrol_hg_commits, as a file in
-    Mercurial is usually uniquely identified by the changeset ID and
-    its path (the file also has a nodeid, but this is internal.)
-
-versioncontrol_hg_tags
-    This is a foreign key mapping of tags to changesets, the equivalent
-    for this database in Mercurial is the '.hgtags' file.
-
-versioncontrol_hg_parents
-    This is a foreign key mapping of parents to changesets. A changeset
-    will usually have one parent, but two parents are possible if there
-    was a merge.
-
-Also, we use some of the default tables in unusual ways:
-
-versioncontrol_branch_operations
-versioncontrol_tag_operations
-    
-    NOT IMPLEMENTED
-    It is somewhat difficult to detect when a branch or tag has taken
-    place by merely inspecting the logs: additions to .hgtags using
-    `hg tag` do not show up in the log at all, and branches are merely
-    indicated by the sudden occurence of a new branch. 

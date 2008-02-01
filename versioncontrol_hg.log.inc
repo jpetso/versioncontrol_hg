@@ -44,8 +44,11 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
   // their changes are registered.
   
   $latest_rev = $repository['hg_specific']['latest_rev'];
-  if ($latest_rev == 0) {
-    $rev_range = null;
+  if ($latest_rev === null) {
+    // This is necessary to ensure that the revisions are ordered
+    // properly, from earliest to latest. We need logs in this order
+    // because some algorithms reference earlier information.
+    $rev_range = '0:';
   } else {
     $rev_range = ($latest_rev + 1) .':';
   }
@@ -62,6 +65,12 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
   // We could refactor each of these into a "handle" function, e.g.
   // _versioncontrol_hg_log_handle_commits, which performs parsing and
   // database work.
+  
+  // Another possible refactoring is to consider each log entry
+  // separately; this allows us to process extremely large data-sets
+  // without running out of memory, and also lets analysis functions
+  // refer to previous revisions with impunity by calling the database
+  // (or we could set up a cache).
   
   // Generate commits:
   $raw_commits = _versioncontrol_hg_log_parse_commits($raw_logs, $repository);
@@ -180,8 +189,14 @@ function _versioncontrol_hg_log_parse_commits($raw_logs, $repository) {
     $commit['hg_specific'] = array(
       'branch_id' => versioncontrol_ensure_branch($log['branches'], $repository['repo_id']),
       'rev' => $log['rev'],
-      // Using key [1] to retrieve only SHA-1 hash
+      // Using key [1] to retrieve only SHA-1 hash; the revision number
+      // should be the same as 'rev'
       'manifest' => $log['_manifest'][1],
+      // We'll need this in order to look up the vc_op_id. In
+      // this case, we use revision because it's easier to handle and
+      // this is all internal processing.
+      'parent1' => $log['_parents'][0][0],
+      'parent2' => $log['_parents'][1][0],
     );
     
     // Build $commit_actions:
@@ -190,22 +205,27 @@ function _versioncontrol_hg_log_parse_commits($raw_logs, $repository) {
     $lookup_adds   = array_flip($log['file_adds']);
     $lookup_dels   = array_flip($log['file_dels']);
     $lookup_copies = array_flip($log['file_copies']);
-    foreach ($log['files'] as $file) {
+    foreach ($log['files'] as $raw_file) {
       $commit_action = array();
+      
+      // Normalize Mercurial's file declaration "CVS" style to accomodate
+      // commitlog.
+      $file = "/$raw_file";
       
       // CVS's implementation involves building a large array with
       // everything you could possibly need, and then excising things
       // based on options. While that approach may take less code,
       // it is less robust to change.
       
-      if (isset($lookup_adds[$file])) {
+      // We need to use $raw_file to reference items in the logs.
+      if (isset($lookup_adds[$raw_file])) {
         $commit_action['action'] = VERSIONCONTROL_ACTION_ADDED;
       }
-      elseif (isset($lookup_dels[$file])) {
+      elseif (isset($lookup_dels[$raw_file])) {
         $commit_action['action'] = VERSIONCONTROL_ACTION_DELETED;
       }
-      elseif (isset($lookup_copies[$file])) {
-        // This doesn't ever seem to happen in practice.
+      elseif (isset($lookup_copies[$raw_file])) {
+        // This doesn't ever seem to happen.
         $commit_action['action'] = VERSIONCONTROL_ACTION_COPIED;
       }
       else {
@@ -213,52 +233,26 @@ function _versioncontrol_hg_log_parse_commits($raw_logs, $repository) {
         $commit_action['action'] = VERSIONCONTROL_ACTION_MODIFIED;
       }
       
-      // Normalize Mercurial's file declaration "CVS" style to accomodate
-      // commitlog.
-      $file = "/$file";
-      
-      // Logs do not have information for 'modified', probably because
+      // Logs do not have information for 'modified', because
       // file_copies is never filled with anything.
       $commit_action['modified'] = FALSE;
       
+      $commit_action['current item'] = array();
+      
+      // This isn't actually used, but we set it for completeness-sake.
+      $commit_action['current item']['path'] = $file;
+      
       if ($commit_action['action'] != VERSIONCONTROL_ACTION_DELETED) {
-        $commit_action['current item'] = array(
-          // Directories are not directly versioned by Mercurial; they
-          // get magically pruned CVS-style.
-          'type' => VERSIONCONTROL_ITEM_FILE,
-          'path' => $file,
-          // This ends up not actually being saved; is it not necessary?
-          'revision' => $commit['revision'],
-          // Note that rev/manifest/branch are not included here; they're
-          // only a join away with the commits table
-        );
-      } else {
-        $commit_action['hg_specific'] = array(
-          // Add a breadcrumb revision so that versioncontrol_hg_commit()
-          // can process the deletion accordingly.
-          'revision' => $commit['revision'],
-        );
+        $commit_action['current item']['type'] = VERSIONCONTROL_ITEM_FILE;
+      }
+      else {
+        $commit_action['current item']['type'] = VERSIONCONTROL_ITEM_FILE_DELETED;
       }
       
-      if ($commit_action['action'] != VERSIONCONTROL_ACTION_ADDED) {
-        $commit_action['source items'] = array();
-        foreach ($log['_parents'] as $parent) {
-          list($rev, $nodeid) = $parent;
-          if ($rev != '-1') {
-            $item = array(
-              'type' => VERSIONCONTROL_ITEM_FILE,
-              // TODO: We need to do a nodeid lookup in order to
-              // find the proper filename; that functionality has not
-              // been implemented yet, and needs to also take into account
-              // nodeids that have not been inserted in the database yet.
-              // This file also needs to munged.
-              'path' => "/$file",
-              'revision' => $nodeid,
-            );
-            $commit_action['source items'][] = $item;
-          }
-        }
-      }
+      // This will be set later in versioncontrol_hg_commit(), because we 
+      // need to ask the database for some information (the log doesn't tell
+      // us very much about this.)
+      $commit_action['source items'] = array();
       
       $commit_actions[$file] = $commit_action;
       
