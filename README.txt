@@ -27,14 +27,7 @@ These are required items that have not been implemented yet.
 - Tags/Branches logging
 - Tag tracking
 - The rest of the required functions
-    - versioncontrol_hg_get_branched_items()
-    - versioncontrol_hg_get_tagged_items()
-        NOTE: These are not exactly relevant to Mercurial, as branches
-        and tags are repository-wide.
     - versioncontrol_hg_get_current_item_tag(), tied to tag tracking
-    - versioncontrol_hg_get_parent_item()
-        NOTE: This is somewhat icky, since Mercurial doesn't version
-        directories.
 - Account tracking (currently everything is anonymous w/ emails)
 
 TODO EXTRA!
@@ -95,17 +88,7 @@ Major issues:
 
 NONE
 
-Minor aesthetic issues and enhancements:
-
-- Using SHA-1 hashes for revision is really ugly; maybe we should use the
-  non-portable revision numbers? (Ideally, compact nodeids would be
-  used, but we need a way to calculate them on the fly due to the
-  risk of collisions.)
-
-- Using email as account name results in commit log displaying the
-  email to the world. It is unknown if, when we give versioncontrol
-  the ability to lookup uids based on emails, these emails will be
-  suppressed from public view.
+Minor issues:
 
 - 'file_copies' as per the Mercurial output doesn't ever seem to be
   triggered; the implementation for this case is accordingly patchy,
@@ -138,6 +121,16 @@ Possible upstream issues:
   so there are no problems.
 
 - In fact, commit log truncates all source items to one entry. Scandalous!
+
+- Using SHA-1 hashes for revision is really ugly; maybe we should use the
+  non-portable revision numbers? (Ideally, compact nodeids would be
+  used, but we need a way to calculate them on the fly due to the
+  risk of collisions.) This would be an extension to commit log.
+
+- Using email as account name results in commit log displaying the
+  email to the world. It is unknown if, when we give versioncontrol
+  the ability to lookup uids based on emails, these emails will be
+  suppressed from public view.
 
 STRUCTURE
 ---------

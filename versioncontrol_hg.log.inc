@@ -282,3 +282,4 @@ function _versioncontrol_hg_log_parse_latest_rev($raw_logs) {
   }
   return $max_rev;
 }
+
