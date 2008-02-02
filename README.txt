@@ -133,7 +133,11 @@ Possible upstream issues:
 - Deleted files can have source items too, but what values are appropriate?
   The last changeset on the file before it was deleted? The changeset
   of the deletion of the file in another branch? We currently do both,
-  although the latter is slightly iffy.
+  although the latter is slightly iffy, but certainly useful info. Commit
+  log currently truncates source items to the first item, which is the original,
+  so there are no problems.
+
+- In fact, commit log truncates all source items to one entry. Scandalous!
 
 STRUCTURE
 ---------
