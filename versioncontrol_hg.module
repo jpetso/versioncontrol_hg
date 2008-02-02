@@ -168,27 +168,12 @@ function versioncontrol_hg_get_commit_branches($commit) {
 
 /**
  * Implementation of [versioncontrol_backend]_commit():
- * Manage (insert or delete) additional commit data in the database.
  *
  * @warning
  *   An important precondition for our particular implementation is that
  *   all earlier revisions must be in the database.
- *
- * @param $op
- *   Either 'insert' when the commit is in the process of being created,
- *   or 'delete' if it will be deleted after this function has been called.
- * @param $commit
- *   A single commit array, like the ones returned
- *   by versioncontrol_get_commits().
- * @param $commit_actions
- *   A structured array containing the exact details of what happened to
- *   each item in this commit. The structure of this array is the same as
- *   the return value of versioncontrol_get_commit_actions().
  */
 function versioncontrol_hg_commit($op, $commit, $commit_actions) {
-  // TODO: There is quite a bit of duplicated code here between hg,
-  // git and hg; maybe item_revisions should be put in core?
-  
   switch ($op) {
     case 'insert':
       foreach ($commit_actions as $path => $action) {
@@ -222,27 +207,84 @@ function versioncontrol_hg_commit($op, $commit, $commit_actions) {
           
           $branch_id = $parent_commit['branch_id'];
           
-          // Now, let's determine the latest commit_action for this
-          // path on this branch: this will be the parent revision.
-          $last_vc_op_id = db_result(db_query(
-            "SELECT actions.vc_op_id FROM {versioncontrol_hg_commit_actions} AS actions
-            JOIN {versioncontrol_hg_commits} AS commits
-            ON actions.vc_op_id = commits.vc_op_id
-            WHERE actions.path = '%s' AND commits.branch_id = %d
-            ORDER BY commits.rev DESC
-            LIMIT 1
-            ",
-            $path, $branch_id));
+          // This step may need to be done multiple times
+          do {
+            
+            // Now, let's determine the latest commit_action for this
+            // path on this branch: this will be the parent revision.
+            $result = db_fetch_array(db_query(
+              "SELECT actions.vc_op_id, actions.type, commits.rev
+              FROM {versioncontrol_hg_commit_actions} AS actions
+              JOIN {versioncontrol_hg_commits} AS commits
+              ON actions.vc_op_id = commits.vc_op_id
+              WHERE
+                actions.path = '%s' AND
+                commits.branch_id = %d AND
+                commits.rev <= %d
+              ORDER BY commits.rev DESC
+              LIMIT 1
+              ",
+              $path, $branch_id, $rev));
+            
+            if (!$result) {
+              // Ok, the last item with this name either doesn't exist,
+              // so we're barking up the wrong
+              // tree: a branch had taken place, and the source file
+              // is in a different branch. (Note we don't have to worry
+              // about merges because they show up in commit actions.)
+              // We need to go to the top of the current branch and
+              // see what source it used.
+              $previous_branch = db_fetch_array(db_query(
+                "SELECT a.branch_id, a.rev FROM {versioncontrol_hg_commits} a
+                WHERE a.rev = (
+                  SELECT parent1 FROM {versioncontrol_hg_commits}
+                  WHERE branch_id = %d
+                  ORDER BY rev ASC
+                  LIMIT 1
+                )
+                ORDER BY a.rev DESC
+                LIMIT 1
+                ",
+                $branch_id
+              ));
+              
+              if (!$previous_branch) {
+                // Database inconsistency!
+                $source_path = null;
+                $last_vc_op_id = null;
+                break;
+              }
+              
+              $branch_id = $previous_branch['branch_id'];
+              $rev = $previous_branch['rev'];
+              
+              continue;
+            }
+            elseif ($result['type'] == VERSIONCONTROL_ITEM_FILE_DELETED &&
+                    $action['current item']['type'] != VERSIONCONTROL_ITEM_FILE_DELETED) {
+              // At some point earlier in the branch, this file was
+              // deleted, and now has been "rised from the dead" via
+              // a merge. Don't attempt to search any further.
+              // Note that if our action is a delete, this indicates
+              // a delete was merged in, and the parent IS valid (so
+              // we don't handle it here.)
+              $source_path = null;
+              $last_vc_op_id = null;
+              break;
+            }
+            
+            // Note that this variable indicates, for merges, the
+            // operation of the other delete that is being merged in
+            $last_vc_op_id = $result['vc_op_id'];
+            
+            // We currently have no way of telling if a file was copied.
+            $source_path = $path;
+            
+            break;
+            
+          } while (1);
           
-          if (!$last_vc_op_id) {
-            // Database inconsistency! (and code duplication!)
-            $source[$k]['path']     = null;
-            $source[$k]['vc_op_id'] = null;
-            continue;
-          }
-          
-          // We currently have no way of telling if a file was copied.
-          $source[$k]['path'] = $path;
+          $source[$k]['path'] = $source_path;
           $source[$k]['vc_op_id'] = $last_vc_op_id;
           
         }

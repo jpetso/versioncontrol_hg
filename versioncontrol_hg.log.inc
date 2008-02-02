@@ -201,11 +201,17 @@ function _versioncontrol_hg_log_parse_commits($raw_logs, $repository) {
     
     // Build $commit_actions:
     
+    // Under very special conditions (basically, when a merge adds
+    // a file, but no edits were made to it), file_adds can contain
+    // files that are not in files. So, we need to merge these two
+    // arrays.
+    $files = array_unique(array_merge($log['files'], $log['file_adds']));
+    
     // These lookups must be tested with isset(), NOT !empty()
     $lookup_adds   = array_flip($log['file_adds']);
     $lookup_dels   = array_flip($log['file_dels']);
     $lookup_copies = array_flip($log['file_copies']);
-    foreach ($log['files'] as $raw_file) {
+    foreach ($files as $raw_file) {
       $commit_action = array();
       
       // Normalize Mercurial's file declaration "CVS" style to accomodate

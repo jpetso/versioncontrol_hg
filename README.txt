@@ -17,7 +17,7 @@ The following items have been completed:
 - Module information hook
 - Log to database adapter
 - Works with commit log
-- Parents are now done recorded and reconstituted properly
+- Parents are now *really* recorded and reconstituted properly
 
 TODO
 ----
@@ -129,6 +129,11 @@ Possible upstream issues:
   itself.
 
 - Commit log should link to our previous revisions, i.e. (modified: 234dab3...)
+
+- Deleted files can have source items too, but what values are appropriate?
+  The last changeset on the file before it was deleted? The changeset
+  of the deletion of the file in another branch? We currently do both,
+  although the latter is slightly iffy.
 
 STRUCTURE
 ---------
