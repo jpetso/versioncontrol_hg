@@ -136,3 +136,5 @@ STRUCTURE
 hg/            Generic code for interfacing with Mercurial via command line
   templates/   These are our custom templates to minimize necessary log parsing
 tests/         SimpleTest unit tests for hg/
+  db/          A multitude of useful *.sql and *.dbquery files for testing
+               and resetting the database.
