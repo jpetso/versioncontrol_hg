@@ -86,6 +86,27 @@ Updating the "current" tag state is done by truncating the tags table
 for that repository, and then repopulating it with the contents of
 .hgtags.
 
+XHG - Commit Scripts
+--------------------
+
+If you want versioncontrol_hg to be instantly updated after you push
+changes to the master server, you can set up a changegroup hook in
+hgrc to run Drupal's cron:
+
+[hooks]
+changegroup = php /path/to/drupal/cron.php
+
+We have decided specifically not to offer our own post-commit script,
+as running cron.php directly is simpler. If, for whatever reason, you
+don't want cron run whenever a changegroup is pushed to Mercurial, you
+can make a quick post-commit script:
+
+<?php
+include_once '/path/to/drupal/includes/bootstrap.inc';
+drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
+versioncontrol_hg_cron();
+?>
+
 KNOWN ISSUES
 ------------
 
