@@ -22,14 +22,6 @@ The following items have been completed:
 - Refactoring to process one log entry at a time globally
 - Tags logging / Tag tracking
 
-TODO
-----
-
-These are required items that have not been implemented yet.
-
-- The rest of the required functions
-    - versioncontrol_hg_get_current_item_tag(), tied to tag tracking
-
 TODO EXTRA!
 -----------
 
@@ -99,7 +91,7 @@ KNOWN ISSUES
 
 Major issues:
 
-NONE
+- What's up with versioncontrol_hg_get_current_item_tag()?
 
 Minor issues:
 

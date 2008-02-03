@@ -430,3 +430,13 @@ function versioncontrol_cvs_get_parent_item($repository, $item, $parent_path = N
   return NULL;
 }
 
+/**
+ * Implementation of [versioncontrol_backend]_get_current_item_tag():
+ *
+ * @warning
+ *    Because there are no tagged items, this function should not be called.
+ */
+function versioncontrol_hg_get_current_item_tag() {
+  return FALSE;
+}
+
