@@ -21,9 +21,7 @@ function versioncontrol_hg_install() {
       // no revisions have been inserted (the equivalent of -1)
       db_query("CREATE TABLE {versioncontrol_hg_repositories} (
         repo_id int unsigned NOT NULL default 0,
-        update_method tinyint unsigned NOT NULL default 0,
         latest_rev int unsigned NULL,
-        run_as_user varchar(255) NOT NULL default '',
         PRIMARY KEY (repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
