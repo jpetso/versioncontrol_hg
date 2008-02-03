@@ -410,7 +410,3 @@ function versioncontrol_cvs_get_parent_item($repository, $item, $parent_path = N
   return NULL;
 }
 
-// Awaiting implementation:
-
-// function versioncontrol_hg_menu()
-

@@ -231,3 +231,36 @@ function hg_pull($repository, $source = null, $update = FALSE, $opts = array(), 
   }
   return shell_exec($cmd .'2>&1');
 }
+
+/**
+ * Retrieves the contents of a specified file at a given revision.
+ *
+ * @param $repository
+ *    Repository root directory
+ * @param $file
+ *    File to retrieve contents of
+ * @param $rev
+ *    Optional revision of file, if NULL use latest
+ * @param $opts
+ *    Extra options
+ * @param $gopts
+ *    Global extra options
+ * @return
+ *    Contents of file, or FALSE if error.
+ */
+function hg_cat($repository, $file, $rev = NULL, $opts = array(), $gopts = array()) {
+  $gopts['cwd'] = $repository;
+  if ($rev !== NULL) {
+    $opts['rev'] = $rev;
+  }
+  $cmd = _hg_build_base('cat', $opts, $gopts);
+  $cmd .= _hg_escape_arg($file) .' ';
+  $value = shell_exec($cmd);
+  if ($value === '' || $value === NULL) {
+    system($cmd, $exit_code);
+    if ($exit_code !== 0) {
+      return FALSE;
+    }
+  }
+  return $value;
+}

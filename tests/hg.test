@@ -162,3 +162,12 @@ class HgPullTest extends HgHarness
     $this->assertIdentical(count(hg_log('sample')), $log_count + 1);
   }
 }
+
+class HgCatTest extends HgHarness
+{
+  var $name = 'hg_cat';
+  function testBasic() {
+    $this->assertIdentical(hg_cat('sample', 'Makefile', '0'), FALSE);
+    $this->assertIdentical(hg_cat('sample', 'Makefile', '1'), "all: hello\n");
+  }
+}
