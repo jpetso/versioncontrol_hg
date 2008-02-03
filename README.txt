@@ -19,6 +19,7 @@ The following items have been completed:
 - Works with commit log
 - Parents are now *really* recorded and reconstituted properly
 - Branches are logged
+- Refactoring to process one log entry at a time globally
 
 TODO
 ----
@@ -40,7 +41,6 @@ but are things I'd like to do some time.
   versioncontrol backend (based on this experience)
 - Formalize any redundancies, determine which ones should be kept for
   performance and which ones should be scrapped in favor of JOINS.
-- Reorganize log processing to be one commit at a time
 - Make log parsing use low memory
 - Figure out how to import a richer hg repository for testing
 
