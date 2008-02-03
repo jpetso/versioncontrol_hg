@@ -49,7 +49,8 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
     // properly, from earliest to latest. We need logs in this order
     // because some algorithms reference earlier information.
     $rev_range = '0:';
-  } else {
+  }
+  else {
     $rev_range = ($latest_rev + 1) .':';
   }
   $raw_logs = hg_log($repository['root'], $rev_range);

@@ -1,6 +1,5 @@
 <?php
-
-// putenv('PATH=%PATH%;C:\Program Files\Mercurial');
+// $Id$
 
 /**
  * @file
@@ -106,7 +105,7 @@ function hg_log($repository, $rev = null, $file = null, $opts = array(), $gopts 
     $gopts['debug'] = true;
   }
   // This template puts the data into a machine readable format:
-  $opts['style'] = dirname(__FILE__) . '/templates/lossless.style';
+  $opts['style'] = dirname(__FILE__) .'/templates/lossless.style';
   if ($rev !== null) $opts['rev'] = $rev;
   $cmd = _hg_build_base('log', $opts, $gopts);
   if ($file !== null) {
