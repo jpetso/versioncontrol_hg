@@ -44,7 +44,7 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
   // their changes are registered.
   
   $latest_rev = $repository['hg_specific']['latest_rev'];
-  if ($latest_rev === null) {
+  if ($latest_rev === false) {
     // This is necessary to ensure that the revisions are ordered
     // properly, from earliest to latest. We need logs in this order
     // because some algorithms reference earlier information.
@@ -72,16 +72,23 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
   // refer to previous revisions with impunity by calling the database
   // (or we could set up a cache).
   
-  // Generate commits:
+  // We currently separate database updates from parameter generation.
+  // This is nice, but requires a little redundant code.
+  
+  // This must run before commits, as it depends on new branches
+  // having not been auto-generated.
+  $raw_branch_operations = _versioncontrol_hg_log_parse_branch_operations($raw_logs, $repository);
   $raw_commits = _versioncontrol_hg_log_parse_commits($raw_logs, $repository);
 
-  // Update commits in database:
+  // Update the database:
+  foreach ($raw_branch_operations as $raw_branch_operation) {
+    list ($branch, $branched_items) = $raw_branch_operation;
+    versioncontrol_insert_branch_operation($branch, $branched_items);
+  }
   foreach ($raw_commits as $raw_commit) {
     list ($commit, $commit_actions) = $raw_commit;
     versioncontrol_insert_commit($commit, $commit_actions);
   }
-  
-  // TODO: Branches/Tags generation and updates
   
   // Update latest revision
   $latest_rev = _versioncontrol_hg_log_parse_latest_rev($raw_logs);
@@ -112,6 +119,7 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
  *      '_parents' => array(0 => First parent nodeid, 1 => Second parent nodeid)
  *      '_author' => String author name w/o email
  *      '_email' => String author's email
+ *      '_branch' => Either the contents of branches, or 'default'
  *
  *    Nodeids take the form of array(string revision number, string SHA-1 hash)
  */
@@ -146,6 +154,8 @@ function _versioncontrol_hg_log_preprocess(&$raw_logs) {
     else {
       $log['_email'] = null;
     }
+    
+    $log['_branch'] = ($log['branches'] !== '') ? $log['branches'] : 'default';
   }
   
 }
@@ -180,14 +190,11 @@ function _versioncontrol_hg_log_parse_commits($raw_logs, $repository) {
     $commit_actions =& $raw_commit[1];
     
     // Build $commit:
-    $commit['repository'] = $repository;
-    $commit['date'] = $log['_date'];
+    $commit = _versioncontrol_hg_log_parse_operation($log, $repository);
     $commit['message'] = $log['desc'];
     $commit['revision'] = $log['node'];
-    // This is reflected accordingly in the {versioncontrol_hg_accounts} table:
-    $commit['username'] = $log['_email'];
     $commit['hg_specific'] = array(
-      'branch_id' => versioncontrol_ensure_branch($log['branches'], $repository['repo_id']),
+      'branch_id' => versioncontrol_ensure_branch($log['_branch'], $repository['repo_id']),
       'rev' => $log['rev'],
       // Using key [1] to retrieve only SHA-1 hash; the revision number
       // should be the same as 'rev'
@@ -268,6 +275,43 @@ function _versioncontrol_hg_log_parse_commits($raw_logs, $repository) {
   }
   
   return $ret;
+}
+
+/**
+ * Parse the array output of hg_log() into form ready for
+ * versioncontrol_insert_branch_operation().
+ *
+ * @return
+ *    Array in form of array($branch, $branched_items = array()), with
+ *    variables corresponding to parameters of versioncontrol_insert_branch_operation() 
+ */
+function _versioncontrol_hg_log_parse_branch_operations($raw_logs, $repository) {
+  $ret = array();
+  foreach ($raw_logs as $log) {
+    $branch_id = versioncontrol_get_branch_id($log['_branch'], $repository['repo_id'], TRUE);
+    if ($branch_id === null) {
+      $commit = _versioncontrol_hg_log_parse_operation($log, $repository);
+      $commit['branch_name'] = $log['_branch'];
+      $commit['action'] = VERSIONCONTROL_ACTION_ADDED;
+      // All items are affected, so there's no need to check.
+      $ret[] = array($commit, array());
+    }
+    // Generate the branch for posterity!
+    versioncontrol_ensure_branch($log['_branch'], $repository['repo_id']);
+  }
+  return $ret;
+}
+
+/**
+ * Returns an operation array with the common values for all types
+ * of operations (commit, branch, tag) instantiated.
+ */
+function _versioncontrol_hg_log_parse_operation($log, $repository) {
+  return array(
+    'repository' => $repository,
+    'date' => $log['_date'],
+    'username' => $log['_email'],
+  );
 }
 
 /**

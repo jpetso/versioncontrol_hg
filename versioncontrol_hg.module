@@ -139,28 +139,26 @@ function versioncontrol_hg_commit($op, $commit, $commit_actions) {
         
         $source = array();
         foreach (array(1, 2) as $k) {
-          $rev = $commit['hg_specific']["parent$k"];
+          $rev = (string) $commit['hg_specific']["parent$k"];
           $source[$k] = array();
-          if ($rev == '-1' || $rev == null) {
+          if ($rev === '-1') {
             // No parent, so our job is really easy.
             $source[$k]['path']     = null;
             $source[$k]['vc_op_id'] = null;
             continue;
           }
           // Determine the branch of the parent
-          $parent_commit = db_result(db_query(
+          $branch_id = db_result(db_query(
             "SELECT branch_id FROM {versioncontrol_hg_commits}
              WHERE rev = %d",
              $rev)
           );
-          if (!$parent_commit) {
+          if ($branch_id === false) {
             // Database inconsistency!
             $source[$k]['path']     = null;
             $source[$k]['vc_op_id'] = null;
             continue;
           }
-          
-          $branch_id = $parent_commit['branch_id'];
           
           // This step may need to be done multiple times
           do {

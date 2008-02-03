@@ -18,14 +18,14 @@ The following items have been completed:
 - Log to database adapter
 - Works with commit log
 - Parents are now *really* recorded and reconstituted properly
+- Branches are logged
 
 TODO
 ----
 
 These are required items that have not been implemented yet.
 
-- Tags/Branches logging
-- Tag tracking
+- Tags logging / Tag tracking
 - The rest of the required functions
     - versioncontrol_hg_get_current_item_tag(), tied to tag tracking
 - Account tracking (currently everything is anonymous w/ emails)
@@ -97,10 +97,6 @@ Minor issues:
 
 Possible upstream issues:
 
-- Commit log seems to barf over our path names because they don't have
-  leading slashes. We currently have taken measures to fix this, but
-  that should not be necessary!
-
 - There is a lot of functionality that feels like it would be better
   placed in versioncontrol itself; namely [versioncontrol_vcs]_get_directory_item(),
   [versioncontrol_vcs]_get_commit_branches, and large portions of
@@ -111,7 +107,7 @@ Possible upstream issues:
   able to say hook_[hookname] and defer the documenting to versioncontrol
   itself.
 
-- Commit log should link to our previous revisions, i.e. (modified: 234dab3...)
+- Commit log should link to our previous revisions, i.e. (modified: <a href="...">234dab3...</a>)
 
 - Deleted files can have source items too, but what values are appropriate?
   The last changeset on the file before it was deleted? The changeset
@@ -131,6 +127,10 @@ Possible upstream issues:
   email to the world. It is unknown if, when we give versioncontrol
   the ability to lookup uids based on emails, these emails will be
   suppressed from public view.
+
+- versioncontrol_hg_ensure_branch() automatically creates a branch if
+  it doesn't exist; it might be helpful (esp. for VCSs that use repository
+  wide branches) if there was a hook attached to it.
 
 STRUCTURE
 ---------
