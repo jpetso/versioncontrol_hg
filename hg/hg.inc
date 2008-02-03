@@ -264,3 +264,23 @@ function hg_cat($repository, $file, $rev = NULL, $opts = array(), $gopts = array
   }
   return $value;
 }
+
+/**
+ * Parses the contents of .hgtags into array($tag => $nodeid).
+ * @param $hgtags
+ *    Contents of .hgtags, probably retrieved by hg_cat();
+ */
+function _hg_parse_hgtags($hgtags) {
+  $tags = array();
+  if ($hgtags) {
+    $temp = explode("\n", $hgtags);
+    foreach ($temp as $line) {
+      $line = rtrim($line);
+      if ($line === '') continue;
+      list($nodeid, $tagname) = explode(" ", $line);
+      $tags[$tagname] = $nodeid;
+    }
+  }
+  return $tags;
+}
+

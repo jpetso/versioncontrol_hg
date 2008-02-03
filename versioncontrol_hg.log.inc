@@ -66,11 +66,22 @@ function _versioncontrol_hg_log_update_repository(&$repository) {
     
     _versioncontrol_hg_log_preprocess_log($log);
     
+    // For branches and tags, the second parameter is invariably array();
+    // we might want to move it out to simplify the if-then logic.
+    
     // Branch handling must occur before commits
     $raw_branch = _versioncontrol_hg_log_parse_branch_operation($log, $repository);
     if ($raw_branch !== false) {
       list($branch, $branched_items) = $raw_branch;
       versioncontrol_insert_branch_operation($branch, $branched_items);
+    }
+    
+    // Multiple tags operations can occur in one commit
+    $tags = _versioncontrol_hg_log_parse_tag_operation($log, $repository);
+    if ($tags !== false) {
+      foreach ($tags as $tag) {
+        versioncontrol_insert_tag_operation($tag, array());
+      }
     }
     
     // Commit handling
@@ -258,15 +269,80 @@ function _versioncontrol_hg_log_parse_commit($log, $repository) {
  */
 function _versioncontrol_hg_log_parse_branch_operation($log, $repository) {
   $branch_id = versioncontrol_get_branch_id($log['_branch'], $repository['repo_id'], TRUE);
-  if ($branch_id === null) {
-    $commit = _versioncontrol_hg_log_parse_operation($log, $repository);
-    $commit['branch_name'] = $log['_branch'];
-    $commit['action'] = VERSIONCONTROL_ACTION_ADDED;
-    // All items are affected, so there's no need to check.
-    versioncontrol_ensure_branch($log['_branch'], $repository['repo_id']);
-    return array($commit, array());
+  if ($branch_id !== null) {
+    return false;
   }
-  return false;
+  $commit = _versioncontrol_hg_log_parse_operation($log, $repository);
+  $commit['branch_name'] = $log['_branch'];
+  $commit['action'] = VERSIONCONTROL_ACTION_ADDED;
+  // All items are affected, so there's no need to check.
+  versioncontrol_ensure_branch($log['_branch'], $repository['repo_id']);
+  return array($commit, array());
+}
+
+/**
+ * Parses an array item of hg_log() into form ready for
+ * versioncontrol_insert_tag_operation().
+ */
+function _versioncontrol_hg_log_parse_tag_operation($log, $repository) {
+  if (!in_array('.hgtags', $log['files']) && !in_array('.hgtags', $log['file_adds'])) {
+    // No changes to .hgtags, so no tag operations
+    return false;
+  }
+  // We need to grab the contents of .hgtags at that revision
+  $hgtags = hg_cat($repository['root'], '.hgtags', $log['rev']);
+  $tags = _hg_parse_hgtags($hgtags);
+  
+  // Now, lets grab the old set of tags
+  $result = db_query(
+    "SELECT t.name, c.revision FROM {versioncontrol_hg_tags} t
+    JOIN {versioncontrol_commits} c ON t.vc_op_id = c.vc_op_id
+    WHERE t.repo_id = %d
+    ",
+    $repository['repo_id']
+  );
+  $old_tags = array();
+  while ($row = db_fetch_object($result)) {
+    $old_tags[$row->name] = $row->revision;
+  }
+  
+  // Now, let's determine the changes
+  // We purposely never use VERSIONCONTROL_ACTION_MOVED because
+  // Mercurial doesn't think of tags this way; it'd be represented
+  // as an add and a delete.
+  
+  $ret = array();
+  
+  // This is to be copied for each tag operation we make.
+  $default = _versioncontrol_hg_log_parse_operation($log, $repository);
+  $default['message'] = $commit['des'];
+  
+  foreach ($old_tags as $name => $nodeid) {
+    $op = $default;
+    $op['tag_name'] = $name;
+    if (!isset($tags[$name])) {
+      $op['action'] = VERSIONCONTROL_ACTION_DELETED;
+    }
+    elseif ($nodeid != $tags[$name]) {
+      $op['action'] = VERSIONCONTROL_ACTION_DELETED;
+    }
+    else {
+      // Everything's good!
+      unset($tags[$name]);
+      continue;
+    }
+    $ret[] = $op;
+  }
+  
+  foreach ($tags as $name => $nodeid) {
+    $op = $default;
+    $op['tag_name'] = $name;
+    $op['action'] = VERSIONCONTROL_ACTION_ADDED;
+    $ret[] = $op;
+  }
+  
+  return $ret;
+  
 }
 
 /**

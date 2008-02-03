@@ -71,10 +71,12 @@ function versioncontrol_hg_install() {
 
       // Mercurial tags apply to changesets, not files
       db_query("CREATE TABLE {versioncontrol_hg_tags} (
-        vc_op_id int unsigned NOT NULL default 0,
+        tag_id int unsigned NOT NULL default 0,
+        repo_id int unsigned NOT NULL default 0,
         name varchar(255) NOT NULL default 'default',
-        PRIMARY KEY (vc_op_id),
-        UNIQUE KEY (name)
+        vc_op_id int unsigned NOT NULL default 0,
+        PRIMARY KEY (tag_id),
+        UNIQUE KEY (repo_id, name)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
       
       break;

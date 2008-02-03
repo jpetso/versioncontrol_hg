@@ -133,6 +133,26 @@ function versioncontrol_hg_commit($op, $commit, $commit_actions) {
     case 'insert':
       foreach ($commit_actions as $path => $action) {
         
+        if ($path === '/.hgtags') {
+          $repo_id = $commit['repository']['repo_id'];
+          // We've got to handle the tags!
+          // This has nothing to do with what's going on below.
+          db_query("DELETE FROM {versioncontrol_hg_tags} WHERE repo_id = %d", $repo_id);
+          $hgtags = hg_cat($commit['repository']['root'], '.hgtags', $commit['hg_specific']['rev']);
+          $tags = _hg_parse_hgtags($hgtags);
+          foreach ($tags as $name => $nodeid) {
+            $vc_op_id = db_result(db_query(
+              "SELECT vc_op_id FROM {versioncontrol_commits} WHERE revision = '%s';",
+              $nodeid
+            ));
+            $tag_id = db_next_id('{versioncontrol_hg_tags}_tag_id');
+            db_query("INSERT INTO {versioncontrol_hg_tags}
+              (tag_id, vc_op_id, repo_id, name) VALUES (%d, %d, %d, '%s');",
+              $tag_id, $vc_op_id, $repo_id, $name
+            );
+          }
+        }
+        
         // Determine source information for this particular path
         // based on both the commit's parent information and this
         // filename. This is *very* Mercurial-specific.

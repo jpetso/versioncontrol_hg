@@ -20,16 +20,15 @@ The following items have been completed:
 - Parents are now *really* recorded and reconstituted properly
 - Branches are logged
 - Refactoring to process one log entry at a time globally
+- Tags logging / Tag tracking
 
 TODO
 ----
 
 These are required items that have not been implemented yet.
 
-- Tags logging / Tag tracking
 - The rest of the required functions
     - versioncontrol_hg_get_current_item_tag(), tied to tag tracking
-- Account tracking (currently everything is anonymous w/ emails)
 
 TODO EXTRA!
 -----------
@@ -80,6 +79,20 @@ two RCS's were great enough that it was merited. One major change that
 I'd like to see merged back to CVS is the use of a PHP function wrapper
 backend to hide the tangly mess of command line calls, and perhaps
 allow PHP to use the native function library.
+
+TAGS
+----
+
+Tags in Mercurial are handled in an interesting manner: the .hgtags
+file contains any of the recognized tags in a repository at any point
+in time. Thus, changes to it must be manually detected and translated
+into tag operations. We have chosen to only report adds or deletes; it
+is possible that the same revision have multiple tags, so there are
+ambiguous cases if we try to figure out renames.
+
+Updating the "current" tag state is done by truncating the tags table
+for that repository, and then repopulating it with the contents of
+.hgtags.
 
 KNOWN ISSUES
 ------------

@@ -16,6 +16,18 @@ DELETE FROM versioncontrol_branch_operations
           vcs = 'hg'
       )
   );
+DELETE FROM versioncontrol_tag_operations
+  WHERE EXISTS (
+    SELECT * FROM versioncontrol_operations o
+    WHERE
+      versioncontrol_tag_operations.vc_op_id = o.vc_op_id AND
+      EXISTS (
+        SELECT * FROM versioncontrol_repositories rep
+        WHERE
+          o.repo_id = rep.repo_id AND
+          vcs = 'hg'
+      )
+  );
 DELETE FROM versioncontrol_branches
   WHERE EXISTS (
     SELECT * FROM versioncontrol_repositories rep
