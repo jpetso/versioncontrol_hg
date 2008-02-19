@@ -417,7 +417,7 @@ function versioncontrol_hg_get_tagged_items($tag) {
 /**
  * Implementation of [vcs_backend]_get_parent_item().
  */
-function versioncontrol_cvs_get_parent_item($repository, $item, $parent_path = NULL) {
+function versioncontrol_hg_get_parent_item($repository, $item, $parent_path = NULL) {
   if (!isset($parent_path)) {
     $item['path'] = dirname($item['path']);
     return $item;
