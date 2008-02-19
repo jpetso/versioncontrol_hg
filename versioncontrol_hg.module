@@ -436,6 +436,6 @@ function versioncontrol_hg_get_parent_item($repository, $item, $parent_path = NU
  *    Because there are no tagged items, this function should not be called.
  */
 function versioncontrol_hg_get_current_item_tag() {
-  return FALSE;
+  return NULL;
 }
 
